@@ -2,7 +2,6 @@
   (:use :cl))
 (in-package #:tinymath-core)
 
-
 ;; We use binary trees to represent algebraic expressions in such a way
 ;; that closely models the underlying data structure Lisp uses for lists.
 ;; 
@@ -71,7 +70,39 @@
 (defstruct sym
   name)
 
-(defstruct tree
+(defstruct btree
   (data nil)
   (left nil)
   (right nil))
+
+;; Construct a btree from a Lisp expression
+(defun wire! (expr)
+  (cond
+    ;; Handle numbers
+    ((numberp expr)
+     (make-btree :data (make-constant :value expr)))
+    ;; Special handling for quoted symbols
+    ((and (listp expr) (eq (car expr) 'quote))
+     (make-btree :data (make-sym :name (cadr expr))))
+    ;; Handle symbols, distinguishing between operators and variables/functions
+    ((symbolp expr)
+     (make-btree :data (make-sym :name expr)))
+    ;; Handle lists, which represent expressions
+    ((listp expr)
+     (let* ((op (first expr))
+            (args (rest expr))
+            (operator (make-operator :name op)))
+       (case (length args)
+         ;; Binary operations
+         (2 (make-btree :data (make-binary-op :operator operator
+                                              :left (wire! (first args))
+                                              :right (wire! (second args))))
+            )
+         ;; Unary operations
+         (1 (make-btree :data (make-unary-op :operator operator
+                                             :operand (wire! (first args))))
+            )
+         (otherwise (error "Unsupported expression type")))))
+    (t (error "Invalid expression"))))
+
+(wire! '(+ (* 2 'x) 3))

@@ -4,8 +4,9 @@
   :components ((:file "package")               ; Defines all packages
                (:module "src"
                         :serial t
-                        :components ((:file "core"))))
-  :description "A tiny mathematics engine specializing in symbolic differentiation"
+                        :components ((:file "core")
+                                     (:file "view"))))
+  :description "A tiny symbolic mathematics engine"
   :author "phasewalk1"
   :licence "MIT"
   :version "0.1.0")
