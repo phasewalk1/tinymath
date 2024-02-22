@@ -50,59 +50,110 @@
 ;; the right to maintain binary structure. This approach allows us to uniformly handle both unary and binary operations 
 ;; within the same binary tree structure, facilitating parsing, manipulation, and evaluation of algebraic expressions.
 
-(defstruct constant
-  value)
+;; Constant values
+(defclass constant ()
+  ((value :initarg :value :accessor value-acc)))
 
-(defstruct operator
-  name
-  precedence
-  is-left-assoc)
+;; Symbols are either variable or point to some function (or operator)
+(defclass sym ()
+  ((name :initarg :name :accessor sym-name)
+   (value :initarg :value :initform nil :accessor sym-value)))
 
-(defstruct binary-op
-  operator
-  left
-  right)
+;; Computation tree
+(defclass tinytree ()
+  ((root :initarg :root :accessor root)
+   (left :initarg :left :accessor left)
+   (right :initarg :right :accessor right)))
 
-(defstruct unary-op
-  operator
-  operand)
-
-(defstruct sym
-  name)
-
-(defstruct btree
-  (data nil)
-  (left nil)
-  (right nil))
-
-;; Construct a btree from a Lisp expression
+;; Wire a computation tree from an arbitrary lisp expression
 (defun wire! (expr)
   (cond
-    ;; Handle numbers
-    ((numberp expr)
-     (make-btree :data (make-constant :value expr)))
-    ;; Special handling for quoted symbols
-    ((and (listp expr) (eq (car expr) 'quote))
-     (make-btree :data (make-sym :name (cadr expr))))
-    ;; Handle symbols, distinguishing between operators and variables/functions
-    ((symbolp expr)
-     (make-btree :data (make-sym :name expr)))
-    ;; Handle lists, which represent expressions
+    ((numberp expr) (make-instance 'constant :value expr))
+    ((quoted-sym? expr) (make-instance 'sym :name (cadr expr)))
+    ((symbolp expr) (make-instance 'sym :name expr))
     ((listp expr)
-     (let* ((op (first expr))
-            (args (rest expr))
-            (operator (make-operator :name op)))
-       (case (length args)
-         ;; Binary operations
-         (2 (make-btree :data (make-binary-op :operator operator
-                                              :left (wire! (first args))
-                                              :right (wire! (second args))))
-            )
-         ;; Unary operations
-         (1 (make-btree :data (make-unary-op :operator operator
-                                             :operand (wire! (first args))))
-            )
-         (otherwise (error "Unsupported expression type")))))
-    (t (error "Invalid expression"))))
+     (let* ((op (car expr))
+            (args (cdr expr))
+            (left (first args))
+            (right (second args)))
+       (make-instance 'tinytree
+                      :root op
+                      :left (and left (wire! left))
+                      :right (and right (wire! right)))))
+    (t (error "Unsupported expression"))))
 
-(wire! '(+ (* 2 'x) 3))
+
+;; (wire! '(+ (* 2 'x) 3))
+;; (wire! '(+ (sin 'x) 3))
+
+(defun make-operation (op &rest args)
+  (reduce (lambda (a b) (make-instance 'tinytree :root op :left a :right b)) args))
+
+(defun simplify (tree)
+  (cond
+    ((typep tree 'constant) tree)
+    ((typep tree 'sym) tree)
+    ((typep tree 'tinytree)
+     (let ((left-simplified (simplify (left tree)))
+           (right-simplified (simplify (right tree))))
+       (cond
+         ((and (eq (root tree) '*)
+               (typep left-simplified 'constant)
+               (= (value-acc left-simplified) 1)) 
+          right-simplified)
+         ((and (eq (root tree) '+)
+               (or (and (typep left-simplified 'constant) (= (value-acc left-simplified) 0))
+                   (and (typep right-simplified 'constant) (= (value-acc right-simplified) 0))))
+          (if (and (typep left-simplified 'constant) (= (value-acc left-simplified) 0))
+            right-simplified
+            left-simplified))
+         (t (make-instance 'tinytree :root (root tree) :left left-simplified :right right-simplified)))))
+    (t tree)))
+
+(defun quoted-sym? (expr)
+  (and (listp expr) (eq (car expr) 'quote)))
+
+(defun precedence (op)
+  "Returns the precedence level for the given operator."
+  (case op
+    ;; Higher precedence
+    ('exp 10)   ; Exponentiation
+    ('sin 9)    ; Trigonometric functions, etc.
+    ('cos 9)
+    ('tan 9)
+    ('log 9)    ; Logarithmic
+    ('* 7)      ; Multiplication
+    ('/ 7)      ; Division
+    ('+ 5)      ; Addition
+    ('- 5)      ; Subtraction
+    ;; Lower precedence
+    ('= 3)      ; Equality
+    ('and 2)    ; Logical AND
+    ('or 1)     ; Logical OR
+    ;; Default case if the operator is not recognized
+    (t 0)))
+
+(defun is-left-assoc? (op)
+  (not (eq op 'exp)))
+
+(defun print-tree (node &optional (level 0))
+  "Prints the tree structure starting from NODE at the given LEVEL."
+  (when node
+    (let ((indent (make-string (* 2 level) :initial-element #\Space)))
+      (cond
+       ;; If the node is a constant, print its value
+       ((typep node 'constant)
+        (format t "~&~A[Constant: ~A]" indent (value-acc node)))
+       ;; If the node is a symbol, print its name
+       ((typep node 'sym)
+        (format t "~&~A[Symbol: ~A]" indent (name node)))
+       ;; If the node is the root of a subtree (an operator or function)
+       ((typep node 'tinytree)
+        (format t "~&~A[Operator: ~A]" indent (root node))
+        ;; Recursively print the left and right subtrees
+        (print-tree (left node) (1+ level))
+        (print-tree (right node) (1+ level)))
+       (t
+        (format t "~&~A[Unknown node type]" indent))))))
+
+

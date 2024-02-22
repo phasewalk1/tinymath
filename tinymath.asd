@@ -11,3 +11,6 @@
   :licence "MIT"
   :version "0.1.0")
 
+(asdf:defsystem #:tinymath-tests
+  :depends-on (#:tinymath)
+  :components ((:file "tests/simplify")))
