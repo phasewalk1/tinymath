@@ -90,25 +90,18 @@
   (reduce (lambda (a b) (make-instance 'tinytree :root op :left a :right b)) args))
 
 (defun simplify (tree)
-  (cond
-    ((typep tree 'constant) tree)
-    ((typep tree 'sym) tree)
-    ((typep tree 'tinytree)
-     (let ((left-simplified (simplify (left tree)))
-           (right-simplified (simplify (right tree))))
-       (cond
-         ((and (eq (root tree) '*)
-               (typep left-simplified 'constant)
-               (= (value-acc left-simplified) 1)) 
-          right-simplified)
-         ((and (eq (root tree) '+)
-               (or (and (typep left-simplified 'constant) (= (value-acc left-simplified) 0))
-                   (and (typep right-simplified 'constant) (= (value-acc right-simplified) 0))))
-          (if (and (typep left-simplified 'constant) (= (value-acc left-simplified) 0))
-            right-simplified
-            left-simplified))
-         (t (make-instance 'tinytree :root (root tree) :left left-simplified :right right-simplified)))))
-    (t tree)))
+  (match-tree tree
+    (((* x 1) | (* 1 x)) (simplify x))
+    (((+ x 0) | (+ 0 x)) (simplify x))
+
+    ((op left right)
+     (let ((left-simplified (simplify left))
+           (right simplified (simplify right)))
+       (make-instance 'tinytree :root op :left left-simplified :right right-simplified)))
+    (_ tree)))
+
+(defun match-tree (tree &rest patterns)
+  (loop for (pattern action) in patterns do))
 
 (defun quoted-sym? (expr)
   (and (listp expr) (eq (car expr) 'quote)))
